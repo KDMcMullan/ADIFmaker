@@ -24,7 +24,7 @@ def parse_wsjtx_log(file_path):
         for line in lines:
             match = qso_pattern.match(line.strip())
             if match:
-                date_str, time_str, freq_mhz, mode, rst_rcvd, rst_sent, _, call, my_call, grid = match.groups()
+                date_str, time_str, freq_mhz, mode, rst_rcvd, _, _, call, my_call, grid = match.groups()
                 
                 # Convert date and time to proper formats
                 qso_datetime = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
@@ -42,7 +42,7 @@ def parse_wsjtx_log(file_path):
                     'mode': mode.strip(),
                     'qso_date': qso_date,
                     'time_on': qso_time,
-                    'rst_sent': rst_sent.strip(),
+                    'rst_sent': '599',  # Assuming a standard report sent
                     'rst_rcvd': rst_rcvd.strip(),
                     'my_grid': 'AA00aa',  # Placeholder for your grid square
                     'grid': grid.strip(),
