@@ -18,20 +18,20 @@ def parse_wsjtx_log(file_path):
         lines = f.readlines()
 
         # Pattern to match QSO lines in the ALL.TXT file
-        # Example: 240927_220115    14.074 Rx FT8     -5  0.1  693 CT1ERW N3GX FM16
-        qso_pattern = re.compile(r"(\d{6})_(\d{6})\s+([\d.]+)\s+\w+\s+(\w+)\s+(-?\d+)\s+[\d.]+\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)")
+        # Example: 240927_220100    14.074 Rx FT8    -15 -0.0  373 K3TJB K4WLG EM77
+        qso_pattern = re.compile(r"(\d{6})_(\d{6})\s+([\d.]+)\s+\w+\s+(\w+)\s+(-?\d+)\s+(-?\d+\.\d+)\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)")
         
         for line in lines:
             match = qso_pattern.match(line.strip())
             if match:
-                date_str, time_str, freq_mhz, mode, rst_rcvd, call, my_call, grid = match.groups()
+                date_str, time_str, freq_mhz, mode, rst_rcvd, rst_sent, _, call, my_call, grid = match.groups()
                 
                 # Convert date and time to proper formats
                 qso_datetime = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
                 qso_date = qso_datetime.strftime("%Y%m%d")
                 qso_time = qso_datetime.strftime("%H%M")
 
-                # Assume 20m band for frequency 14.074 (as an example)
+                # Determine band based on frequency
                 band = "20m" if 14.000 <= float(freq_mhz) < 14.350 else "unknown"
 
                 # Add the QSO data to the list
@@ -42,7 +42,7 @@ def parse_wsjtx_log(file_path):
                     'mode': mode.strip(),
                     'qso_date': qso_date,
                     'time_on': qso_time,
-                    'rst_sent': '599',  # Assuming RST sent is not provided in the log
+                    'rst_sent': rst_sent.strip(),
                     'rst_rcvd': rst_rcvd.strip(),
                     'my_grid': 'AA00aa',  # Placeholder for your grid square
                     'grid': grid.strip(),
