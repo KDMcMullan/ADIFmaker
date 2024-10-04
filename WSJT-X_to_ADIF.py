@@ -20,16 +20,6 @@ BANDS = (
     ('70m', 430000, 440000),
 )
 
-# Define a template for ADIF format
-ADIF_HEADER = """\
-ADIF Export from WSJT-X ALL.TXT
-<EOH>
-"""
-
-ADIF_QSO_TEMPLATE = """\
-<CALL:{call_len}>{call}<BAND:{band_len}>{band}<FREQ:{freq_len}>{freq}<MODE:{mode_len}>{mode}<QSO_DATE:{qso_date_len}>{qso_date}<TIME_ON:{time_on_len}>{time_on}<RST_SENT:{rst_len}>{rst_sent}<RST_RCVD:{rst_len}>{rst_rcvd}<MY_GRIDSQUARE:{my_grid_len}>{my_grid}<GRIDSQUARE:{grid_len}>{grid}<EOR>
-"""
-
 # Function to get band based on frequency
 def get_band(frequency):
     for band in BANDS:
@@ -37,9 +27,32 @@ def get_band(frequency):
             return band[0]
     return "unknown"
 
+# Function to parse a QSO message and return a dictionary with details
+def parse_message(message):
+    parts = message.split()
+    if len(parts) < 2:
+        return None
+
+    sender = parts[0]
+    recipient = parts[1] if len(parts) > 1 else ""
+    
+    # Determine if this is a 73 or RR73 message
+    if "73" in message:
+        qso_complete = True
+    else:
+        qso_complete = False
+
+    return {
+        'sender': sender,
+        'recipient': recipient,
+        'qso_complete': qso_complete,
+        'message': message
+    }
+
 # Function to extract and parse lines from ALL.TXT that are valid QSOs
 def parse_wsjtx_log(file_path):
     qso_data = []
+    ongoing_qsos = {}  # To track ongoing exchanges by recipient
     valid_qso_count = 0
     non_contributing_count = 0
     invalid_lines_count = 0
@@ -49,7 +62,6 @@ def parse_wsjtx_log(file_path):
 
         # Pattern to match QSO lines in the ALL.TXT file
         qso_pattern = re.compile(r"(\d{6})_(\d{6})\s+([\d.]+)\s+(Rx|Tx)\s+(\w+)\s+(-?\d+)\s+(-?\d+\.\d+)\s+(\d+)\s+(.*)")
-        exchanges = []
         
         for line in lines:
             match = qso_pattern.match(line.strip())
@@ -57,53 +69,51 @@ def parse_wsjtx_log(file_path):
                 date_str, time_str, freq_mhz, direction, mode, rst_rcvd, _, _, message = match.groups()
                 frequency = float(freq_mhz)
 
-                # Store the exchange for later analysis
-                exchanges.append((date_str, time_str, frequency, direction, mode, rst_rcvd, message))
+                # Parse the message and check if it's part of a valid QSO
+                parsed_msg = parse_message(message)
+                if not parsed_msg:
+                    non_contributing_count += 1
+                    continue
 
-            else:
-                invalid_lines_count += 1
+                sender = parsed_msg['sender']
+                recipient = parsed_msg['recipient']
+                qso_complete = parsed_msg['qso_complete']
 
-        # Analyze exchanges for valid QSOs
-        for i in range(len(exchanges)):
-            date_str, time_str, frequency, direction, mode, rst_rcvd, message = exchanges[i]
+                if MyCall in message:
+                    if sender == MyCall or recipient == MyCall:
+                        # Track conversation between MyCall and other station
+                        other_station = recipient if sender == MyCall else sender
+                        
+                        if qso_complete:
+                            # Log valid QSO if we have a complete message
+                            qso_datetime = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
+                            qso_date = qso_datetime.strftime("%Y%m%d")
+                            qso_time = qso_datetime.strftime("%H%M")
 
-            if MyCall in message:  # Check if MyCall is in the message
-                # Check if it is part of a valid exchange
-                if "73" in message or "RR73" in message:
-                    # Log the QSO
-                    qso_datetime = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
-                    qso_date = qso_datetime.strftime("%Y%m%d")
-                    qso_time = qso_datetime.strftime("%H%M")
-                    recipient, sender = None, None
+                            # Determine band using frequency
+                            band = get_band(frequency)
 
-                    # Determine sender and recipient based on MyCall presence
-                    parts = message.split()
-                    if parts[0] == MyCall:
-                        sender = MyCall
-                        recipient = parts[1]  # Assume second part is the recipient
-                    elif parts[1] == MyCall:
-                        sender = parts[0]  # Assume first part is the sender
-                        recipient = MyCall
-
-                    # Determine band using frequency
-                    band = get_band(frequency)
-
-                    # Add the QSO data to the list
-                    qso_data.append({
-                        'call': sender.strip(),
-                        'band': band,
-                        'freq': freq_mhz,
-                        'mode': mode.strip(),
-                        'qso_date': qso_date,
-                        'time_on': qso_time,
-                        'rst_sent': '599',  # Assuming a standard report sent
-                        'rst_rcvd': rst_rcvd.strip(),
-                        'my_grid': 'AA00aa',  # Placeholder for your grid square
-                        'grid': 'unknown',  # No grid data available
-                    })
-                    valid_qso_count += 1
+                            # Add the QSO data to the list
+                            qso_data.append({
+                                'call': other_station,
+                                'band': band,
+                                'freq': freq_mhz,
+                                'mode': mode,
+                                'qso_date': qso_date,
+                                'time_on': qso_time,
+                                'rst_sent': '599',  # Assuming standard report
+                                'rst_rcvd': rst_rcvd.strip(),
+                                'my_grid': 'AA00aa',  # Placeholder for your grid square
+                                'grid': 'unknown',  # No grid data available
+                            })
+                            valid_qso_count += 1
+                        else:
+                            # Track incomplete conversation
+                            ongoing_qsos[other_station] = parsed_msg
                 else:
                     non_contributing_count += 1
+            else:
+                invalid_lines_count += 1
 
     return qso_data, valid_qso_count, non_contributing_count, invalid_lines_count
 
