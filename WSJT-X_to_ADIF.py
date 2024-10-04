@@ -18,25 +18,23 @@ def parse_wsjtx_log(file_path):
         lines = f.readlines()
 
         # Pattern to match QSO lines in the ALL.TXT file
-        qso_pattern = re.compile(r"([0-9\-: ]+) (.*) (\d{4}) (\d+) (.*) (\d{2})(.*)")
+        # Example: 240927_220115    14.074 Rx FT8     -5  0.1  693 CT1ERW N3GX FM16
+        qso_pattern = re.compile(r"(\d{6})_(\d{6})\s+([\d.]+)\s+\w+\s+(\w+)\s+(-?\d+)\s+[\d.]+\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)")
         
         for line in lines:
             match = qso_pattern.match(line.strip())
             if match:
-                timestamp, call, freq_khz, mode, rst_sent, rst_rcvd, extra = match.groups()
+                date_str, time_str, freq_mhz, mode, rst_rcvd, call, my_call, grid = match.groups()
                 
-                # Extract timestamp components
-                qso_datetime = datetime.strptime(timestamp.strip(), "%Y-%m-%d %H:%M")
+                # Convert date and time to proper formats
+                qso_datetime = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
                 qso_date = qso_datetime.strftime("%Y%m%d")
                 qso_time = qso_datetime.strftime("%H%M")
-                
-                # Convert frequency from kHz to MHz
-                freq_mhz = f"{int(freq_khz) / 1000:.3f}"
-                
-                # Extract other fields (simplified here; adjust as needed for ADIF spec compliance)
-                grid_square = extra.strip().split()[-1] if len(extra.strip().split()) > 0 else 'UNKNOWN'
-                band = "20m"  # This is an example; you could map the frequency range to an actual band
-                
+
+                # Assume 20m band for frequency 14.074 (as an example)
+                band = "20m" if 14.000 <= float(freq_mhz) < 14.350 else "unknown"
+
+                # Add the QSO data to the list
                 qso_data.append({
                     'call': call.strip(),
                     'band': band,
@@ -44,10 +42,10 @@ def parse_wsjtx_log(file_path):
                     'mode': mode.strip(),
                     'qso_date': qso_date,
                     'time_on': qso_time,
-                    'rst_sent': rst_sent.strip(),
+                    'rst_sent': '599',  # Assuming RST sent is not provided in the log
                     'rst_rcvd': rst_rcvd.strip(),
                     'my_grid': 'AA00aa',  # Placeholder for your grid square
-                    'grid': grid_square,
+                    'grid': grid.strip(),
                 })
     
     return qso_data
